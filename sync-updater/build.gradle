@@ -5,9 +5,14 @@ plugins {
 group = 'dev.lectern'
 version = '1.0.0'
 
+// Target Java 8 bytecode via --release 8 so the jar runs on every bundled
+// Minecraft Java runtime without tying us to a JDK 8 toolchain in CI.
 java {
     sourceCompatibility = JavaVersion.VERSION_1_8
     targetCompatibility = JavaVersion.VERSION_1_8
+}
+tasks.withType(JavaCompile).configureEach {
+    options.release.set(8)
 }
 
 jar {

@@ -15,11 +15,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Java 8
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 8
+          # Gradle 9+ requires JDK 17+ to run. The build targets Java 8
+          # bytecode via options.release = 8 in build.gradle.
+          java-version: 21
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
@@ -41,11 +43,11 @@ jobs:
 
       - name: Upload to relay
         env:
-          RELAY_SECRET: ${{ secrets.RELAY_SECRET }}
+          UPLOAD_SECRET: ${{ secrets.STATIC_UPLOAD_SECRET }}
           RELAY_URL: ${{ vars.RELAY_URL || 'https://relay.thelectern.app' }}
         run: |
           curl -fsS -X PUT "$RELAY_URL/static/lectern-sync-updater.jar" \
-            -H "Authorization: Bearer $RELAY_SECRET" \
+            -H "Authorization: Bearer $UPLOAD_SECRET" \
             -H "X-Sync-Version: ${{ steps.jar.outputs.version }}" \
             -H "Content-Type: application/java-archive" \
             --data-binary "@${{ steps.jar.outputs.path }}"

@@ -5,9 +5,16 @@ plugins {
 group = 'dev.lectern'
 version = '1.0.0'
 
+// Target Java 8 bytecode so the jar runs on any Minecraft Java runtime
+// (Minecraft ships bundled JREs ranging from 8 to 21). Uses --release 8
+// so the bootstrap classpath is set correctly regardless of which JDK
+// actually runs Gradle.
 java {
     sourceCompatibility = JavaVersion.VERSION_1_8
     targetCompatibility = JavaVersion.VERSION_1_8
+}
+tasks.withType(JavaCompile).configureEach {
+    options.release.set(8)
 }
 
 jar {

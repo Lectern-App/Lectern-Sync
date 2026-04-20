@@ -48,7 +48,7 @@ GitHub Actions auto-builds and uploads jars to the Lectern relay on every push t
 - `sync-tool/**` changes → builds and uploads `lectern-sync.jar`
 - `sync-updater/**` changes → builds and uploads `lectern-sync-updater.jar`
 
-Set `RELAY_SECRET` in repo secrets (the relay's upload bearer token).
+Set `STATIC_UPLOAD_SECRET` in repo secrets (the same value configured as the `STATIC_UPLOAD_SECRET` worker secret on the Lectern relay).
 
 ## License
 

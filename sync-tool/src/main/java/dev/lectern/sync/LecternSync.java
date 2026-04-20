@@ -67,6 +67,21 @@ public class LecternSync {
         ManifestClient.FetchResult fetchResult;
         try {
             fetchResult = ManifestClient.fetchManifest(config);
+        } catch (ManifestNotFoundException e) {
+            // Every configured source responded with 404. The server was reached
+            // fine — it just has no record of this instance. Most likely the
+            // admin removed the server or its relay TTL lapsed.
+            String errMsg = e.getMessage();
+            System.out.println("[Lectern] Server instance no longer registered: " + errMsg);
+            System.out.println("[Lectern] Launching with current mods.");
+
+            ui.setStatus("Server instance unavailable");
+            ui.log("This server is no longer registered on the relay.");
+            ui.log("It may have been removed or expired. Launching anyway.");
+            ui.autoCloseAfter(2500);
+            try { Thread.sleep(2600); } catch (InterruptedException ignored) {}
+            System.exit(0);
+            return;
         } catch (IOException e) {
             String errMsg = e.getMessage();
             System.out.println("[Lectern] Could not reach server: " + errMsg);

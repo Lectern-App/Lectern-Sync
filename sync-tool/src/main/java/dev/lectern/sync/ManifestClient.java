@@ -52,13 +52,19 @@ public class ManifestClient {
         String serverId = config.getServerId();
         IOException relayError = null;
         IOException directError = null;
+        int sourcesTried = 0;
+        int sourcesNotFound = 0;
 
         // 1. Try relay (primary)
         if (config.hasRelay()) {
+            sourcesTried++;
             String relayUrl = config.getRelayUrl() + "/s/" + serverId + "/manifest";
             try {
                 ServerManifest manifest = doFetch(relayUrl);
                 return new FetchResult(manifest, Source.RELAY);
+            } catch (ManifestNotFoundException e) {
+                relayError = e;
+                sourcesNotFound++;
             } catch (IOException e) {
                 relayError = e;
             }
@@ -66,16 +72,27 @@ public class ManifestClient {
 
         // 2. Try direct URL (fallback)
         if (config.hasDirectUrl()) {
+            sourcesTried++;
             String directUrl = config.getServerUrl() + "/api/sync/" + serverId + "/manifest";
             try {
                 ServerManifest manifest = doFetch(directUrl);
                 return new FetchResult(manifest, Source.DIRECT);
+            } catch (ManifestNotFoundException e) {
+                directError = e;
+                sourcesNotFound++;
             } catch (IOException e) {
                 directError = e;
             }
         }
 
-        // 3. Both failed — build a useful error message
+        // 3. Every source we tried returned 404 → the server genuinely doesn't
+        // exist on any of them (as opposed to one being unreachable).
+        if (sourcesTried > 0 && sourcesNotFound == sourcesTried) {
+            throw new ManifestNotFoundException(
+                "Server " + serverId + " is not registered on any configured source.");
+        }
+
+        // 4. Mixed or all network failures — report them all.
         StringBuilder msg = new StringBuilder("Could not fetch manifest from any source.");
         if (relayError != null) {
             msg.append("\n  Relay: ").append(relayError.getMessage());
@@ -83,7 +100,7 @@ public class ManifestClient {
         if (directError != null) {
             msg.append("\n  Direct: ").append(directError.getMessage());
         }
-        if (relayError == null && directError == null) {
+        if (sourcesTried == 0) {
             msg.append("\n  No relay_url or server_url configured.");
         }
         throw new IOException(msg.toString());
@@ -147,6 +164,13 @@ public class ManifestClient {
                     }
                     err.close();
                 } catch (Exception ignored) {
+                }
+                // A 404 from the server means the request reached it fine —
+                // the server just has no record of this ID. Surface it as a
+                // distinct error so callers can differentiate "server gone"
+                // from "relay unreachable".
+                if (status == 404) {
+                    throw new ManifestNotFoundException(msg);
                 }
                 throw new IOException(msg);
             }

@@ -1,0 +1,18 @@
+plugins {
+    id 'java'
+}
+
+group = 'dev.lectern'
+version = '1.0.0'
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
+}
+
+jar {
+    archiveFileName = 'lectern-sync-updater.jar'
+    manifest {
+        attributes 'Main-Class': 'dev.lectern.sync.updater.SyncUpdater'
+    }
+}

@@ -24,7 +24,7 @@ import java.io.IOException;
  */
 public class LecternSync {
 
-    private static final String VERSION = "1.0.0";
+    private static final String VERSION = "1.0.1";
     private static final String CONFIG_FILE = "lectern.json";
 
     public static void main(String[] args) {

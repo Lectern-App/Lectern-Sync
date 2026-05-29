@@ -24,12 +24,14 @@ public class ServerManifest {
     private final List<ModEntry> mods;
     private final String serverName;
     private final String serverAddress;
+    private final String iconHash;
 
-    public ServerManifest(long manifestVersion, List<ModEntry> mods, String serverName, String serverAddress) {
+    public ServerManifest(long manifestVersion, List<ModEntry> mods, String serverName, String serverAddress, String iconHash) {
         this.manifestVersion = manifestVersion;
         this.mods = mods;
         this.serverName = serverName;
         this.serverAddress = serverAddress;
+        this.iconHash = iconHash;
     }
 
     public long getManifestVersion() {
@@ -48,6 +50,10 @@ public class ServerManifest {
         return serverAddress;
     }
 
+    public String getIconHash() {
+        return iconHash;
+    }
+
     /**
      * Parse a ServerManifest from the JSON response body.
      */
@@ -55,6 +61,7 @@ public class ServerManifest {
         long version = JsonHelper.getLong(json, "manifest_version", 0);
         String serverName = JsonHelper.getString(json, "server_name");
         String serverAddress = JsonHelper.getString(json, "server_address");
+        String iconHash = JsonHelper.getString(json, "icon_hash");
         List<String> modObjects = JsonHelper.getObjectArray(json, "mods");
         List<ModEntry> mods = new ArrayList<ModEntry>();
 
@@ -76,7 +83,7 @@ public class ServerManifest {
             }
         }
 
-        return new ServerManifest(version, mods, serverName, serverAddress);
+        return new ServerManifest(version, mods, serverName, serverAddress, iconHash);
     }
 
     /**

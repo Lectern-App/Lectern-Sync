@@ -149,6 +149,14 @@ public class LecternSync {
             System.out.println("[Lectern] Sync complete. Launching Minecraft...");
             ui.log("Sync complete. Launching Minecraft...");
 
+            // Sync the server icon into the launcher instance. Best-effort;
+            // never aborts the launch. Icon is cosmetic — mods are critical.
+            try {
+                IconSyncer.sync(instanceDir, manifest, config, ui);
+            } catch (Throwable t) {
+                System.err.println("[Lectern] Icon sync threw: " + t.getMessage());
+            }
+
             // Update servers.dat with the server address from the manifest
             String serverAddress = manifest.getServerAddress();
             String serverName = manifest.getServerName() != null ? manifest.getServerName() : config.getServerName();

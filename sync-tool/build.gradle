@@ -15,7 +15,9 @@ static String gitVersion(File dir) {
         def out = proc.text.trim()
         proc.waitFor()
         if (proc.exitValue() == 0 && !out.isEmpty()) {
-            return out
+            // Strip a leading "v" from version tags (v1.0.3 -> 1.0.3); the log
+            // line already prints a "v" prefix, so this avoids "vv1.0.3".
+            return out.startsWith('v') && out.length() > 1 && Character.isDigit(out.charAt(1) as char) ? out.substring(1) : out
         }
     } catch (ignored) {
     }

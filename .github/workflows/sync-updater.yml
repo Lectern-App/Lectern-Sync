@@ -42,7 +42,7 @@ jobs:
             exit 1
           fi
           echo "path=$JAR_PATH" >> $GITHUB_OUTPUT
-          echo "version=$(git describe --tags --always --dirty)" >> $GITHUB_OUTPUT
+          echo "version=$(git describe --tags --always --dirty | sed 's/^v//')" >> $GITHUB_OUTPUT
 
       - name: Upload to relay
         env:

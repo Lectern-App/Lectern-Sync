@@ -35,12 +35,23 @@ import java.security.MessageDigest;
  */
 public class SyncUpdater {
 
-    private static final String VERSION = "1.0.0";
+    private static final String VERSION = resolveVersion();
     private static final String CONFIG_FILE = "lectern.json";
     private static final String SYNC_JAR = "lectern-sync.jar";
     private static final String DEFAULT_RELAY_URL = "https://relay.thelectern.app";
     private static final int CONNECT_TIMEOUT_MS = 5000;
     private static final int READ_TIMEOUT_MS = 30000;
+
+    /**
+     * Read the version stamped into the jar manifest at build time
+     * (Implementation-Version, derived from git). Returns "dev" when running
+     * outside a built jar (e.g. from an IDE).
+     */
+    private static String resolveVersion() {
+        Package pkg = SyncUpdater.class.getPackage();
+        String v = pkg != null ? pkg.getImplementationVersion() : null;
+        return (v != null && !v.isEmpty()) ? v : "dev";
+    }
 
     public static void main(String[] args) {
         System.out.println("[Lectern Updater v" + VERSION + "]");

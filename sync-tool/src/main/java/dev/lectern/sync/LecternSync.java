@@ -24,8 +24,19 @@ import java.io.IOException;
  */
 public class LecternSync {
 
-    private static final String VERSION = "1.0.1";
+    private static final String VERSION = resolveVersion();
     private static final String CONFIG_FILE = "lectern.json";
+
+    /**
+     * Read the version stamped into the jar manifest at build time
+     * (Implementation-Version, derived from git). Returns "dev" when running
+     * outside a built jar (e.g. from an IDE).
+     */
+    private static String resolveVersion() {
+        Package pkg = LecternSync.class.getPackage();
+        String v = pkg != null ? pkg.getImplementationVersion() : null;
+        return (v != null && !v.isEmpty()) ? v : "dev";
+    }
 
     public static void main(String[] args) {
         System.out.println("[Lectern Sync v" + VERSION + "]");
@@ -148,14 +159,6 @@ public class LecternSync {
 
             System.out.println("[Lectern] Sync complete. Launching Minecraft...");
             ui.log("Sync complete. Launching Minecraft...");
-
-            // Sync the server icon into the launcher instance. Best-effort;
-            // never aborts the launch. Icon is cosmetic — mods are critical.
-            try {
-                IconSyncer.sync(instanceDir, manifest, config, ui);
-            } catch (Throwable t) {
-                System.err.println("[Lectern] Icon sync threw: " + t.getMessage());
-            }
 
             // Update servers.dat with the server address from the manifest
             String serverAddress = manifest.getServerAddress();

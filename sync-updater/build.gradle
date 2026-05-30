@@ -3,7 +3,27 @@ plugins {
 }
 
 group = 'dev.lectern'
-version = '1.0.0'
+
+// Derive the version from git so the printed/deployed version always matches
+// the built commit — no manual bumps. Uses the most recent reachable tag when
+// one exists (e.g. "v1.0.3" or "v1.0.3-2-g1a2b3c4"), otherwise the short commit
+// hash; falls back to "dev" outside a git checkout. CI uses fetch-depth: 0 so
+// tags resolve, and runs the same `git describe` for the relay version label.
+static String gitVersion(File dir) {
+    try {
+        def proc = ['git', 'describe', '--tags', '--always', '--dirty'].execute(null, dir)
+        def out = proc.text.trim()
+        proc.waitFor()
+        if (proc.exitValue() == 0 && !out.isEmpty()) {
+            // Strip a leading "v" from version tags (v1.0.3 -> 1.0.3); the log
+            // line already prints a "v" prefix, so this avoids "vv1.0.3".
+            return out.startsWith('v') && out.length() > 1 && Character.isDigit(out.charAt(1) as char) ? out.substring(1) : out
+        }
+    } catch (ignored) {
+    }
+    return 'dev'
+}
+version = gitVersion(projectDir)
 
 // Target Java 8 bytecode via --release 8 so the jar runs on every bundled
 // Minecraft Java runtime without tying us to a JDK 8 toolchain in CI.
@@ -18,6 +38,9 @@ tasks.withType(JavaCompile).configureEach {
 jar {
     archiveFileName = 'lectern-sync-updater.jar'
     manifest {
-        attributes 'Main-Class': 'dev.lectern.sync.updater.SyncUpdater'
+        attributes(
+            'Main-Class': 'dev.lectern.sync.updater.SyncUpdater',
+            'Implementation-Version': project.version
+        )
     }
 }

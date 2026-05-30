@@ -3,7 +3,7 @@ plugins {
 }
 
 group = 'dev.lectern'
-version = '1.0.1'
+version = '1.0.2'
 
 // Target Java 8 bytecode so the jar runs on any Minecraft Java runtime
 // (Minecraft ships bundled JREs ranging from 8 to 21). Uses --release 8

@@ -127,14 +127,17 @@ public class LecternSync {
         System.out.println("[Lectern] Manifest version: " + manifest.getManifestVersion());
         System.out.println("[Lectern] Server mods: " + manifest.getMods().size());
 
-        // Sync mods
+        // Sync content. ModSyncer routes each entry to the right instance
+        // subfolder (mods/, resourcepacks/, shaderpacks/) based on project_type,
+        // creating folders on demand. Ensure mods/ exists up front so an
+        // empty-manifest server still presents a clean layout.
         File modsDir = new File(instanceDir, "mods");
         if (!modsDir.exists()) {
             modsDir.mkdirs();
         }
 
         try {
-            ModSyncer syncer = new ModSyncer(modsDir, instanceDir, config);
+            ModSyncer syncer = new ModSyncer(instanceDir, config);
             ModSyncer.SyncResult result = syncer.sync(manifest, ui);
 
             if (result.getDownloaded() == 0 && result.getRemoved() == 0) {

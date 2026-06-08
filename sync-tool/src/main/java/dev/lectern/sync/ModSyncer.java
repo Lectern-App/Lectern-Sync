@@ -20,11 +20,21 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Core sync logic: compares local mods against the server manifest,
- * downloads new/updated mods, and removes mods that are no longer on the server.
+ * Core sync logic: compares local content against the server manifest,
+ * downloads new/updated files, and removes files that are no longer on the
+ * server.
+ *
+ * Content is routed to the correct client instance subfolder based on each
+ * manifest entry's project_type: mods → mods/, resource packs →
+ * resourcepacks/, shaders → shaderpacks/. The server already strips server-only
+ * types (datapacks, plugins) from the client manifest, so anything that arrives
+ * here is meant for the client.
  *
  * Tracks which files it manages via a state file (.lectern/managed-mods) in the
- * instance directory to avoid touching mods the player installed manually.
+ * instance directory to avoid touching content the player installed manually.
+ * State entries are instance-relative paths (e.g. "mods/foo.jar",
+ * "resourcepacks/bar.zip"); legacy state (bare filenames) is migrated to
+ * "mods/<name>" on load.
  */
 public class ModSyncer {
 
@@ -33,18 +43,16 @@ public class ModSyncer {
     private static final int DOWNLOAD_TIMEOUT_MS = 30000;
     private static final int DOWNLOAD_CONNECT_TIMEOUT_MS = 10000;
 
-    private final File modsDir;
     private final File instanceDir;
     private final SyncConfig config;
 
-    public ModSyncer(File modsDir, File instanceDir, SyncConfig config) {
-        this.modsDir = modsDir;
+    public ModSyncer(File instanceDir, SyncConfig config) {
         this.instanceDir = instanceDir;
         this.config = config;
     }
 
     /**
-     * Sync local mods to match the server manifest.
+     * Sync local content to match the server manifest.
      *
      * @param manifest The server manifest to sync against
      * @param ui       The sync dialog for visual feedback (may be null)
@@ -57,16 +65,16 @@ public class ModSyncer {
         int failed = 0;
         List<String> failedNames = new ArrayList<String>();
 
-        // Build set of expected file names from manifest
-        Set<String> expectedFiles = new HashSet<String>();
+        // Build set of expected instance-relative paths from the manifest
+        Set<String> expectedPaths = new HashSet<String>();
         for (ServerManifest.ModEntry mod : manifest.getMods()) {
-            expectedFiles.add(mod.getFileName());
+            expectedPaths.add(relativePath(mod));
         }
 
         // Count how many need downloading
         int totalToDownload = 0;
         for (ServerManifest.ModEntry mod : manifest.getMods()) {
-            File target = new File(modsDir, mod.getFileName());
+            File target = new File(instanceDir, relativePath(mod));
             if (!target.exists() || !isFileValid(target, mod)) {
                 totalToDownload++;
             }
@@ -74,10 +82,11 @@ public class ModSyncer {
 
         int downloadIndex = 0;
 
-        // Download new or updated mods
+        // Download new or updated content
         for (ServerManifest.ModEntry mod : manifest.getMods()) {
-            File target = new File(modsDir, mod.getFileName());
-            newManagedFiles.add(mod.getFileName());
+            String relPath = relativePath(mod);
+            File target = new File(instanceDir, relPath);
+            newManagedFiles.add(relPath);
 
             if (target.exists() && isFileValid(target, mod)) {
                 // File exists and matches — skip
@@ -96,6 +105,11 @@ public class ModSyncer {
             }
 
             try {
+                // Ensure the target subfolder exists (mods/, resourcepacks/, ...)
+                File parent = target.getParentFile();
+                if (parent != null && !parent.exists()) {
+                    parent.mkdirs();
+                }
                 downloadFile(mod.getDownloadUrl(), target);
                 downloaded++;
             } catch (IOException e) {
@@ -107,15 +121,15 @@ public class ModSyncer {
                 }
                 // Keep existing file if download failed
                 if (target.exists()) {
-                    newManagedFiles.add(mod.getFileName());
+                    newManagedFiles.add(relPath);
                 }
             }
         }
 
-        // Remove mods that we previously managed but are no longer in the manifest
+        // Remove content that we previously managed but is no longer in the manifest
         for (String managedFile : managedFiles) {
-            if (!expectedFiles.contains(managedFile)) {
-                File old = new File(modsDir, managedFile);
+            if (!expectedPaths.contains(managedFile)) {
+                File old = new File(instanceDir, managedFile);
                 if (old.exists()) {
                     System.out.println("[Lectern]   Removing: " + managedFile);
                     if (ui != null) {
@@ -137,6 +151,15 @@ public class ModSyncer {
         saveState(newManagedFiles);
 
         return new SyncResult(downloaded, removed, failed, failedNames);
+    }
+
+    /**
+     * The instance-relative path a manifest entry should occupy, e.g.
+     * "mods/foo.jar" or "resourcepacks/bar.zip". Uses forward slashes so the
+     * managed-state file is stable across platforms.
+     */
+    private String relativePath(ServerManifest.ModEntry mod) {
+        return mod.getTargetSubdir() + "/" + mod.getFileName();
     }
 
     /**
@@ -200,8 +223,9 @@ public class ModSyncer {
                 throw new IOException("Too many redirects");
             }
 
-            // Download to a temp file first, then rename (atomic-ish)
-            File temp = new File(modsDir, target.getName() + ".lectern-tmp");
+            // Download to a temp file first (next to the target), then rename (atomic-ish)
+            File parent = target.getParentFile();
+            File temp = new File(parent, target.getName() + ".lectern-tmp");
             in = conn.getInputStream();
             out = new FileOutputStream(temp);
 
@@ -261,8 +285,10 @@ public class ModSyncer {
     }
 
     /**
-     * Load the set of filenames that we previously managed.
-     * The state file is a simple newline-delimited list of filenames.
+     * Load the set of instance-relative paths that we previously managed.
+     * The state file is a simple newline-delimited list. Legacy entries that are
+     * bare filenames (pre-multi-folder builds, always mods) are normalised to
+     * "mods/<name>".
      */
     private File getStateFile() {
         File stateDir = new File(instanceDir, STATE_DIR);
@@ -277,7 +303,7 @@ public class ModSyncer {
         File stateFile = getStateFile();
         if (!stateFile.exists()) {
             // Migrate from old location (mods/.lectern-mods) if it exists
-            File oldState = new File(modsDir, ".lectern-mods");
+            File oldState = new File(new File(instanceDir, "mods"), ".lectern-mods");
             if (oldState.exists()) {
                 oldState.renameTo(stateFile);
             } else {
@@ -293,7 +319,7 @@ public class ModSyncer {
             while ((line = reader.readLine()) != null) {
                 line = line.trim();
                 if (!line.isEmpty()) {
-                    files.add(line);
+                    files.add(normalizeStateEntry(line));
                 }
             }
         } catch (IOException e) {
@@ -308,7 +334,21 @@ public class ModSyncer {
     }
 
     /**
-     * Save the set of filenames we now manage.
+     * Normalise a managed-state entry to an instance-relative path. Legacy
+     * entries were bare filenames (mods only); give them an explicit "mods/"
+     * prefix. Backslashes (from any earlier Windows write) become forward
+     * slashes so comparisons against freshly-built paths succeed.
+     */
+    private String normalizeStateEntry(String entry) {
+        String normalized = entry.replace('\\', '/');
+        if (normalized.indexOf('/') < 0) {
+            return "mods/" + normalized;
+        }
+        return normalized;
+    }
+
+    /**
+     * Save the set of instance-relative paths we now manage.
      */
     private void saveState(Set<String> files) throws IOException {
         File stateFile = getStateFile();

@@ -64,6 +64,10 @@ public class ServerManifest {
             String downloadUrl = JsonHelper.getString(modJson, "download_url");
             String fileHash = JsonHelper.getString(modJson, "file_hash");
             String sha1 = JsonHelper.getString(modJson, "sha1");
+            // project_type tells us which client folder the file belongs in
+            // (mods / resourcepacks / shaderpacks). Older servers omit it, so it
+            // defaults to "mod" in ModEntry.
+            String projectType = JsonHelper.getString(modJson, "project_type");
 
             if (fileName != null && downloadUrl != null) {
                 mods.add(new ModEntry(
@@ -71,7 +75,8 @@ public class ServerManifest {
                     fileName,
                     downloadUrl,
                     fileHash,
-                    sha1
+                    sha1,
+                    projectType
                 ));
             }
         }
@@ -88,13 +93,15 @@ public class ServerManifest {
         private final String downloadUrl;
         private final String fileHash;
         private final String sha1;
+        private final String projectType;
 
-        public ModEntry(String name, String fileName, String downloadUrl, String fileHash, String sha1) {
+        public ModEntry(String name, String fileName, String downloadUrl, String fileHash, String sha1, String projectType) {
             this.name = name;
             this.fileName = fileName;
             this.downloadUrl = downloadUrl;
             this.fileHash = fileHash;
             this.sha1 = sha1;
+            this.projectType = (projectType != null && !projectType.isEmpty()) ? projectType : "mod";
         }
 
         public String getName() {
@@ -115,6 +122,31 @@ public class ServerManifest {
 
         public String getSha1() {
             return sha1;
+        }
+
+        public String getProjectType() {
+            return projectType;
+        }
+
+        /**
+         * The client instance subfolder this content belongs in, relative to the
+         * instance dir. Mods → "mods", resource packs → "resourcepacks", shaders
+         * → "shaderpacks". Any unknown/future type defaults to "mods" (the server
+         * already filters out server-only types like datapacks/plugins, so they
+         * never reach the client manifest).
+         */
+        public String getTargetSubdir() {
+            if (projectType == null) {
+                return "mods";
+            }
+            String t = projectType.toLowerCase();
+            if (t.equals("resourcepack")) {
+                return "resourcepacks";
+            }
+            if (t.equals("shader")) {
+                return "shaderpacks";
+            }
+            return "mods";
         }
     }
 }

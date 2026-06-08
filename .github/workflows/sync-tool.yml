@@ -31,7 +31,7 @@ jobs:
 
       - name: Build
         working-directory: sync-tool
-        run: gradle build --no-daemon
+        run: ./gradlew build --no-daemon
 
       - name: Locate jar
         id: jar

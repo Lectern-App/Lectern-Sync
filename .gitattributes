@@ -1,0 +1,6 @@
+# The Gradle wrapper shell script must use LF endings or it fails on Linux/CI.
+gradlew         text eol=lf
+# Windows batch scripts want CRLF.
+*.bat           text eol=crlf
+# Treat jars (incl. the wrapper jar) as binary so they're never line-normalised.
+*.jar           binary

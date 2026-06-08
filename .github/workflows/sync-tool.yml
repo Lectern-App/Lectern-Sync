@@ -31,7 +31,10 @@ jobs:
 
       - name: Build
         working-directory: sync-tool
-        run: ./gradlew build --no-daemon
+        # Use the Gradle provisioned by setup-gradle (no flaky distribution
+        # download). The committed wrapper is for reproducible *local* builds;
+        # forcing ./gradlew here made CI fetch ~130MB from a flaky CDN each run.
+        run: gradle build --no-daemon
 
       - name: Locate jar
         id: jar

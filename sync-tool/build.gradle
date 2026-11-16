@@ -38,6 +38,12 @@ tasks.withType(JavaCompile).configureEach {
 }
 
 jar {
+    if (providers.gradleProperty('connectBinaries').isPresent()) {
+        from(providers.gradleProperty('connectBinaries')) {
+            include '*/lectern-connect', '*/lectern-connect.exe', 'licenses/*.txt'
+            into 'connect'
+        }
+    }
     manifest {
         attributes(
             'Main-Class': 'dev.lectern.sync.LecternSync',

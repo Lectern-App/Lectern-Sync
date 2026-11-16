@@ -1,0 +1,151 @@
+name: Build and publish Connect Sync
+
+on:
+  pull_request:
+    paths:
+      - "connect/**"
+      - "sync-tool/**"
+      - ".github/workflows/connect.yml"
+  push:
+    branches: [main]
+    paths:
+      - "connect/**"
+      - "sync-tool/**"
+      - ".github/workflows/connect.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.27.4"
+          cache-dependency-path: connect/go.sum
+      - name: Test Connect
+        working-directory: connect
+        run: go test -mod=readonly ./...
+      - name: Build Connect executables
+        working-directory: connect
+        env:
+          CGO_ENABLED: "0"
+        shell: bash
+        run: |
+          set -euo pipefail
+          for platform in windows linux darwin; do
+            for arch in amd64 arm64; do
+              directory="$RUNNER_TEMP/connect-binaries/$platform-$arch"
+              mkdir -p "$directory"
+              filename=lectern-connect
+              if [[ "$platform" == windows ]]; then filename+=.exe; fi
+              GOOS="$platform" GOARCH="$arch" go build -mod=readonly -trimpath -ldflags="-s -w" -o "$directory/$filename" .
+            done
+          done
+          licenses="$RUNNER_TEMP/connect-binaries/licenses"
+          mkdir -p "$licenses"
+          cp ../LICENSE "$licenses/lectern.txt"
+          cp "$(go env GOROOT)/LICENSE" "$licenses/go-runtime.txt"
+          tailcat=$(go list -m -f '{{.Dir}}' github.com/tailscale/tailcat)
+          cp "$tailcat/LICENSE" "$licenses/tailcat.txt"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: "8.10.2"
+      - name: Assemble the bundled JAR
+        working-directory: sync-tool
+        run: gradle build --no-daemon "-PconnectBinaries=$RUNNER_TEMP/connect-binaries"
+      - name: Check release contents
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir release
+          shopt -s nullglob
+          jars=(sync-tool/build/libs/lectern-sync-*.jar)
+          if [[ ${#jars[@]} -ne 1 ]]; then
+            echo "::error::Expected one Lectern Sync JAR."
+            exit 1
+          fi
+          cp "${jars[0]}" release/lectern-connect-sync.jar
+          python3 - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+
+          jar = Path("release/lectern-connect-sync.jar")
+          if not 0 < jar.stat().st_size <= 95 * 1024**2:
+              raise SystemExit("Connect JAR is too large for the Relay upload.")
+          with ZipFile(jar) as bundle:
+              expected = {
+                  f"connect/{platform}-{arch}/lectern-connect" + (".exe" if platform == "windows" else "")
+                  for platform in ("windows", "linux", "darwin")
+                  for arch in ("amd64", "arm64")
+              }
+              expected.update(f"connect/licenses/{name}.txt" for name in ("lectern", "go-runtime", "tailcat"))
+              missing = expected.difference(bundle.namelist())
+              if missing or bundle.testzip():
+                  raise SystemExit(f"Invalid Connect JAR. Missing entries: {sorted(missing)}")
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lectern-connect-sync
+          path: release/lectern-connect-sync.jar
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    concurrency:
+      group: lectern-connect-sync-production
+      cancel-in-progress: false
+    env:
+      RELAY_URL: ${{ vars.RELAY_URL || 'https://relay.thelectern.app' }}
+      UPLOAD_SECRET: ${{ secrets.STATIC_UPLOAD_SECRET }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: lectern-connect-sync
+      - name: Wait for the Connect Relay
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$UPLOAD_SECRET" ]]; then
+            echo "::error::Set STATIC_UPLOAD_SECRET for Lectern-Sync."
+            exit 1
+          fi
+          for attempt in $(seq 1 24); do
+            if curl -fsS --max-time 10 "${RELAY_URL%/}/v2/connect/health" | jq -e '.ready == true' >/dev/null; then
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::The Connect Relay is unavailable. Deploy Lectern-Relay, then rerun this workflow."
+          exit 1
+      - name: Publish bundle to Relay
+        shell: bash
+        run: |
+          set -euo pipefail
+          jar=lectern-connect-sync.jar
+          sha=$(sha256sum "$jar" | cut -d' ' -f1)
+          crc=$(python3 -c 'from pathlib import Path; import sys, zlib; print(f"{zlib.crc32(Path(sys.argv[1]).read_bytes()):08x}")' "$jar")
+          curl --fail --silent --show-error --retry 3 --retry-all-errors --max-time 150 \
+            --request PUT "${RELAY_URL%/}/static/lectern-connect-sync.jar" \
+            --header "Authorization: Bearer $UPLOAD_SECRET" \
+            --header "Content-Type: application/java-archive" \
+            --header "X-Zip-Crc32: $crc" --header "X-Sync-Sha256: $sha" \
+            --data-binary "@$jar" |
+            jq -e --arg sha "$sha" '.stored == true and .sha256 == $sha'
+          curl --fail --silent --show-error --retry 5 --retry-all-errors --max-time 20 "${RELAY_URL%/}/v2/connect/health" |
+            jq -e --arg sha "$sha" '.ready == true and .jar_sha256 == $sha'

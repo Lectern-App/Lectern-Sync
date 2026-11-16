@@ -39,6 +39,9 @@ public class LecternSync {
     }
 
     public static void main(String[] args) {
+        if (args.length > 0 && (args[0].equals("connect") || args[0].equals("connect-keygen"))) {
+            System.exit(ConnectLaunch.run(args));
+        }
         System.out.println("[Lectern Sync v" + VERSION + "]");
 
         // Find the Minecraft instance directory (where lectern.json lives)

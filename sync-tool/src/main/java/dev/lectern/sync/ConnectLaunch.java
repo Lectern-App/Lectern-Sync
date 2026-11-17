@@ -17,9 +17,24 @@ import java.util.Locale;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 
-/** Prism wrapper that keeps a single gameplay tunnel alive for the game process. */
-final class ConnectLaunch {
+/** Starts the gameplay tunnel and keeps it alive for the game process. */
+public final class ConnectLaunch {
     private ConnectLaunch() {}
+
+    public static void premain(String options) {
+        // Prism starts Minecraft in the instance's game directory.
+        Helper helper = new Helper();
+        try {
+            Path minecraft = Paths.get("").toRealPath();
+            connect(helper, minecraft, minecraft.resolve(".lectern/connect.json"), deviceFile(minecraft));
+            Runtime.getRuntime().addShutdownHook(new Thread(helper::close, "lectern-connect-cleanup"));
+        } catch (Exception e) {
+            helper.close();
+            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+            System.err.println("[Lectern Connect] " + e.getMessage());
+            System.exit(1);
+        }
+    }
 
     static int run(String[] args) {
         try {
@@ -85,7 +100,7 @@ final class ConnectLaunch {
         return publicKey;
     }
 
-    private static int play(Helper helper, Path minecraft, Path setup, Path device, String[] command) throws Exception {
+    private static void connect(Helper helper, Path minecraft, Path setup, Path device) throws Exception {
         if (!Files.isRegularFile(setup)) {
             throw new IOException("Download the Prism instance from your group share link.");
         }
@@ -119,7 +134,10 @@ final class ConnectLaunch {
         }
         ServersDatWriter.updateServer(minecraft.toFile(), "Lectern Connect", localAddress);
         System.out.println("[Lectern Connect] Gameplay tunnel ready at " + localAddress);
+    }
 
+    private static int play(Helper helper, Path minecraft, Path setup, Path device, String[] command) throws Exception {
+        connect(helper, minecraft, setup, device);
         Process game = new ProcessBuilder(command).directory(minecraft.toFile()).inheritIO().start();
         Thread shutdown = new Thread(() -> {
             game.destroy();

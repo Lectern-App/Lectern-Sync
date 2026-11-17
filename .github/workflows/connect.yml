@@ -95,6 +95,15 @@ jobs:
               if missing or bundle.testzip():
                   raise SystemExit(f"Invalid Connect JAR. Missing entries: {sorted(missing)}")
           PY
+          instance=$(mktemp -d "$RUNNER_TEMP/Prism instance.XXXXXX")
+          mkdir "$instance/.minecraft"
+          cp release/lectern-connect-sync.jar "$instance/"
+          if (cd "$instance/.minecraft" &&
+              java "-Duser.home=$instance" -javaagent:../lectern-sync.jar -version) > "$instance/launch.log" 2>&1; then
+              echo "::error::Connect started without a setup file."
+              exit 1
+          fi
+          grep -F '[Lectern Connect] Download the Prism instance from your group share link.' "$instance/launch.log"
       - uses: actions/upload-artifact@v4
         with:
           name: lectern-connect-sync

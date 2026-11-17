@@ -43,6 +43,9 @@ jar {
             include '*/lectern-connect', '*/lectern-connect.exe', 'licenses/*.txt'
             into 'connect'
         }
+        manifest {
+            attributes('Premain-Class': 'dev.lectern.sync.ConnectLaunch')
+        }
     }
     manifest {
         attributes(
